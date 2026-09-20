@@ -1,342 +1,404 @@
-// CGPA Calculator, UNIOSUN 5.0 scale
-// Data model: array of semesters, each with a name and an array of courses
-// Each course: { name, unit, grade }
-// State persists to localStorage under key "cgpa-data"
+// CGPA Calculator, 5.0 scale (Nigerian universities)
+// State shape: { semesters: [{ id, name, courses: [{ id, name, unit, grade }] }], prior: { cgpa, units } }
+// Persisted in localStorage under STORAGE_KEY.
 
-const GRADE_POINTS = {
-  A: 5.0,
-  B: 4.0,
-  C: 3.0,
-  D: 2.0,
-  E: 1.0,
-  F: 0.0,
-};
-
+const GRADE_POINTS = { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 };
 const STORAGE_KEY = "cgpa-data";
+const MAX_UNIT = 10;
+const MAX_PRIOR_UNITS = 400;
 
 let state = loadState();
+let toastTimer = null;
+
+const $ = (id) => document.getElementById(id);
+
+function emptyState() {
+  return { semesters: [], prior: { cgpa: "", units: "" } };
+}
 
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { semesters: [] };
+    if (!raw) return emptyState();
     const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.semesters)) return { semesters: [] };
-    return parsed;
+    if (!parsed || !Array.isArray(parsed.semesters)) return emptyState();
+    const semesters = parsed.semesters.map((s) => ({
+      id: String(s.id || uid()),
+      name: String(s.name || "Semester"),
+      courses: Array.isArray(s.courses)
+        ? s.courses.map((c) => ({
+            id: String(c.id || uid()),
+            name: String(c.name || ""),
+            unit: clampUnit(c.unit),
+            grade: Object.prototype.hasOwnProperty.call(GRADE_POINTS, c.grade) ? c.grade : "A",
+          }))
+        : [],
+    }));
+    const prior = parsed.prior && typeof parsed.prior === "object" ? parsed.prior : {};
+    return { semesters, prior: { cgpa: prior.cgpa ?? "", units: prior.units ?? "" } };
   } catch (err) {
     console.error("Could not read saved data, starting fresh.", err);
-    return { semesters: [] };
+    return emptyState();
   }
 }
 
+let saveTimer = null;
 function saveState() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (err) {
-    console.error("Could not save data.", err);
-  }
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      console.error("Could not save data.", err);
+    }
+  }, 250);
 }
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function addSemester() {
-  state.semesters.push({
-    id: uid(),
-    name: "Semester " + (state.semesters.length + 1),
-    courses: [],
-  });
-  saveState();
-  render();
+// Unit values are always a whole number from 0 to MAX_UNIT, even if typed or stored badly.
+function clampUnit(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(MAX_UNIT, Math.max(0, n));
 }
 
-function removeSemester(semesterId) {
-  state.semesters = state.semesters.filter((s) => s.id !== semesterId);
-  saveState();
-  render();
+function pointsFor(grade) {
+  return GRADE_POINTS[grade] ?? 0;
 }
 
-function addCourse(semesterId) {
-  const semester = state.semesters.find((s) => s.id === semesterId);
-  if (!semester) return;
-  semester.courses.push({ id: uid(), name: "", unit: 3, grade: "A" });
-  saveState();
-  render();
-}
-
-function removeCourse(semesterId, courseId) {
-  const semester = state.semesters.find((s) => s.id === semesterId);
-  if (!semester) return;
-  semester.courses = semester.courses.filter((c) => c.id !== courseId);
-  saveState();
-  render();
-}
-
-function updateSemesterName(semesterId, name) {
-  const semester = state.semesters.find((s) => s.id === semesterId);
-  if (!semester) return;
-  semester.name = name;
-  saveState();
-}
-
-function updateCourse(semesterId, courseId, field, value) {
-  const semester = state.semesters.find((s) => s.id === semesterId);
-  if (!semester) return;
-  const course = semester.courses.find((c) => c.id === courseId);
-  if (!course) return;
-  course[field] = value;
-  saveState();
-  renderMetrics();
+// One helper for all the math. Returns quality points and units for a list of courses.
+function tally(courses) {
+  let points = 0;
+  let units = 0;
+  for (const c of courses) {
+    const u = clampUnit(c.unit);
+    points += u * pointsFor(c.grade);
+    units += u;
+  }
+  return { points, units };
 }
 
 function semesterGPA(semester) {
-  let totalPoints = 0;
-  let totalUnits = 0;
-  for (const course of semester.courses) {
-    const unit = Number(course.unit) || 0;
-    const point = GRADE_POINTS[course.grade] ?? 0;
-    totalPoints += unit * point;
-    totalUnits += unit;
-  }
-  return totalUnits > 0 ? totalPoints / totalUnits : 0;
+  const { points, units } = tally(semester.courses);
+  return units > 0 ? points / units : 0;
 }
 
-function overallCGPA() {
-  let totalPoints = 0;
-  let totalUnits = 0;
-  for (const semester of state.semesters) {
-    for (const course of semester.courses) {
-      const unit = Number(course.unit) || 0;
-      const point = GRADE_POINTS[course.grade] ?? 0;
-      totalPoints += unit * point;
-      totalUnits += unit;
-    }
-  }
-  return { cgpa: totalUnits > 0 ? totalPoints / totalUnits : 0, totalUnits };
+function priorValues() {
+  const cgpa = Number(state.prior.cgpa);
+  const units = Number(state.prior.units);
+  const okCgpa = state.prior.cgpa !== "" && Number.isFinite(cgpa) && cgpa >= 0 && cgpa <= 5;
+  const okUnits = state.prior.units !== "" && Number.isFinite(units) && units >= 0 && units <= MAX_PRIOR_UNITS;
+  if (!okCgpa || !okUnits) return { points: 0, units: 0, valid: state.prior.cgpa === "" && state.prior.units === "" };
+  return { points: cgpa * units, units, valid: true };
 }
 
-function classOfDegree(cgpa) {
+function overall() {
+  let points = 0;
+  let units = 0;
+  for (const s of state.semesters) {
+    const t = tally(s.courses);
+    points += t.points;
+    units += t.units;
+  }
+  const p = priorValues();
+  points += p.points;
+  units += p.units;
+  return { cgpa: units > 0 ? points / units : 0, units, points };
+}
+
+function classOfDegree(cgpa, units) {
+  if (units === 0) return "Add courses to see your class of degree";
   if (cgpa >= 4.5) return "First Class";
   if (cgpa >= 3.5) return "Second Class Upper";
   if (cgpa >= 2.4) return "Second Class Lower";
   if (cgpa >= 1.5) return "Third Class";
   if (cgpa > 0) return "Pass";
-  return "Add courses to see your standing";
+  return "Fail range";
 }
 
-function render() {
+/* Mutations */
+
+function addSemester() {
+  state.semesters.push({ id: uid(), name: "Semester " + (state.semesters.length + 1), courses: [] });
+  saveState();
   renderSemesters();
-  renderMetrics();
+  renderSummary();
+}
+
+function removeSemester(id) {
+  state.semesters = state.semesters.filter((s) => s.id !== id);
+  saveState();
+  renderSemesters();
+  renderSummary();
+}
+
+function addCourse(semesterId) {
+  const s = state.semesters.find((x) => x.id === semesterId);
+  if (!s) return;
+  s.courses.push({ id: uid(), name: "", unit: 3, grade: "A" });
+  saveState();
+  renderSemesters();
+  renderSummary();
+}
+
+function removeCourse(semesterId, courseId) {
+  const s = state.semesters.find((x) => x.id === semesterId);
+  if (!s) return;
+  s.courses = s.courses.filter((c) => c.id !== courseId);
+  saveState();
+  renderSemesters();
+  renderSummary();
+}
+
+/* Rendering. Semesters rebuild on structure changes only. Typing updates numbers in place. */
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) node.appendChild(c);
+  return node;
 }
 
 function renderSemesters() {
-  const container = document.getElementById("semesters-container");
-  container.innerHTML = "";
+  const box = $("semesters-container");
+  box.textContent = "";
 
   if (state.semesters.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "card";
-    empty.style.textAlign = "center";
-    empty.innerHTML = '<div class="empty-state">No semesters yet. Add one to start entering your courses.</div>';
-    container.appendChild(empty);
+    box.appendChild(el("div", { class: "semester" }, [el("p", { class: "empty", text: "No semesters yet. Tap Add semester to start." })]));
     return;
   }
 
-  for (const semester of state.semesters) {
-    const block = document.createElement("div");
-    block.className = "semester-block";
-
-    const titleRow = document.createElement("div");
-    titleRow.className = "semester-title-row";
-
-    const nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.value = semester.name;
-    nameInput.addEventListener("input", (e) => updateSemesterName(semester.id, e.target.value));
-    nameInput.addEventListener("blur", renderMetrics);
-
-    const rightGroup = document.createElement("div");
-    rightGroup.style.display = "flex";
-    rightGroup.style.alignItems = "center";
-    rightGroup.style.gap = "8px";
-
-    const gpaLabel = document.createElement("span");
-    gpaLabel.className = "pill";
-    gpaLabel.textContent = "GPA " + semesterGPA(semester).toFixed(2);
-    gpaLabel.id = "gpa-label-" + semester.id;
-
-    const removeBtn = document.createElement("button");
-    removeBtn.className = "icon-btn";
-    removeBtn.title = "Remove semester";
-    removeBtn.textContent = "\u2715";
-    removeBtn.addEventListener("click", () => removeSemester(semester.id));
-
-    rightGroup.appendChild(gpaLabel);
-    rightGroup.appendChild(removeBtn);
-    titleRow.appendChild(nameInput);
-    titleRow.appendChild(rightGroup);
-    block.appendChild(titleRow);
-
-    const list = document.createElement("div");
-    list.className = "subject-list";
-
-    if (semester.courses.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "No courses yet in this semester.";
-      list.appendChild(empty);
-    }
-
-    for (const course of semester.courses) {
-      list.appendChild(renderCourseRow(semester, course));
-    }
-
-    block.appendChild(list);
-
-    const addRow = document.createElement("div");
-    addRow.className = "add-row";
-    addRow.innerHTML = '<span>Add a course with its unit and grade</span>';
-    const addBtn = document.createElement("button");
-    addBtn.className = "btn btn-secondary";
-    addBtn.innerHTML = "<span>+</span><span>Add course</span>";
-    addBtn.addEventListener("click", () => addCourse(semester.id));
-    addRow.appendChild(addBtn);
-    block.appendChild(addRow);
-
-    container.appendChild(block);
-  }
+  const frag = document.createDocumentFragment();
+  for (const s of state.semesters) frag.appendChild(renderSemester(s));
+  box.appendChild(frag);
 }
 
-function renderCourseRow(semester, course) {
-  const row = document.createElement("div");
-  row.className = "subject-row";
+function renderSemester(s) {
+  const gpa = el("span", { class: "gpa", id: "gpa-" + s.id, text: "GPA " + semesterGPA(s).toFixed(2) });
 
-  const nameWrap = document.createElement("div");
-  nameWrap.innerHTML = '<div class="subject-label">Course</div>';
-  const nameInput = document.createElement("input");
-  nameInput.type = "text";
-  nameInput.placeholder = "e.g. Cataloguing 201";
-  nameInput.value = course.name;
-  nameInput.addEventListener("input", (e) => updateCourse(semester.id, course.id, "name", e.target.value));
-  nameWrap.appendChild(nameInput);
-
-  const unitWrap = document.createElement("div");
-  unitWrap.innerHTML = '<div class="subject-label">Units</div>';
-  const unitInput = document.createElement("input");
-  unitInput.type = "number";
-  unitInput.min = "0";
-  unitInput.max = "10";
-  unitInput.value = course.unit;
-  unitInput.addEventListener("input", (e) => {
-    updateCourse(semester.id, course.id, "unit", e.target.value);
-    refreshSemesterGPA(semester.id);
-  });
-  unitWrap.appendChild(unitInput);
-
-  const gradeWrap = document.createElement("div");
-  gradeWrap.innerHTML = '<div class="subject-label">Grade</div>';
-  const gradeSelect = document.createElement("select");
-  for (const g of Object.keys(GRADE_POINTS)) {
-    const opt = document.createElement("option");
-    opt.value = g;
-    opt.textContent = g;
-    if (g === course.grade) opt.selected = true;
-    gradeSelect.appendChild(opt);
-  }
-  gradeSelect.addEventListener("change", (e) => {
-    updateCourse(semester.id, course.id, "grade", e.target.value);
-    refreshSemesterGPA(semester.id);
-    refreshPointsPill(course.id, e.target.value);
-  });
-  gradeWrap.appendChild(gradeSelect);
-
-  const pointsWrap = document.createElement("div");
-  pointsWrap.innerHTML = '<div class="subject-label">Points</div>';
-  const pointsPill = document.createElement("div");
-  pointsPill.className = "grade-pill";
-  pointsPill.id = "points-pill-" + course.id;
-  pointsPill.innerHTML = "<span>" + GRADE_POINTS[course.grade].toFixed(1) + "</span>";
-  pointsWrap.appendChild(pointsPill);
-
-  const removeBtn = document.createElement("button");
-  removeBtn.className = "icon-btn";
-  removeBtn.title = "Remove course";
-  removeBtn.textContent = "\u2715";
-  removeBtn.addEventListener("click", () => removeCourse(semester.id, course.id));
-
-  row.appendChild(nameWrap);
-  row.appendChild(unitWrap);
-  row.appendChild(gradeWrap);
-  row.appendChild(pointsWrap);
-  row.appendChild(removeBtn);
-
-  return row;
-}
-
-function refreshSemesterGPA(semesterId) {
-  const semester = state.semesters.find((s) => s.id === semesterId);
-  if (!semester) return;
-  const label = document.getElementById("gpa-label-" + semesterId);
-  if (label) label.textContent = "GPA " + semesterGPA(semester).toFixed(2);
-  renderMetrics();
-}
-
-function refreshPointsPill(courseId, grade) {
-  const pill = document.getElementById("points-pill-" + courseId);
-  if (pill) pill.innerHTML = "<span>" + GRADE_POINTS[grade].toFixed(1) + "</span>";
-}
-
-function renderMetrics() {
-  const { cgpa, totalUnits } = overallCGPA();
-  document.getElementById("cgpa-value").textContent = cgpa.toFixed(2);
-  document.getElementById("cgpa-class").textContent = classOfDegree(cgpa);
-  document.getElementById("total-units-label").textContent = totalUnits + " units";
-
-  const courseCount = state.semesters.reduce((sum, s) => sum + s.courses.length, 0);
-  document.getElementById("chip-semesters").textContent = state.semesters.length + " semesters";
-  document.getElementById("chip-courses").textContent = courseCount + " courses";
-
-  renderSparkline();
-}
-
-function renderSparkline() {
-  const poly = document.getElementById("sparkline-poly");
-  const labelsWrap = document.getElementById("sparkline-labels");
-  labelsWrap.innerHTML = "";
-
-  const gpas = state.semesters.map((s) => semesterGPA(s));
-
-  if (gpas.length === 0) {
-    poly.setAttribute("points", "0,15 100,15");
-    return;
-  }
-
-  const maxScale = 5.0;
-  const step = gpas.length > 1 ? 100 / (gpas.length - 1) : 0;
-  const points = gpas.map((g, i) => {
-    const x = gpas.length > 1 ? i * step : 50;
-    const y = 28 - (g / maxScale) * 26;
-    return x + "," + y;
-  });
-  poly.setAttribute("points", points.join(" "));
-
-  state.semesters.forEach((s, i) => {
-    const span = document.createElement("span");
-    span.textContent = s.name.length > 10 ? s.name.slice(0, 10) + "\u2026" : s.name;
-    labelsWrap.appendChild(span);
-  });
-}
-
-document.getElementById("add-semester-btn").addEventListener("click", addSemester);
-
-document.getElementById("reset-btn").addEventListener("click", () => {
-  if (confirm("This clears every semester and course you've entered. Continue?")) {
-    state = { semesters: [] };
+  const name = el("input", { class: "sem-name", type: "text", value: s.name, "aria-label": "Semester name", maxlength: "40" });
+  name.addEventListener("input", (e) => {
+    s.name = e.target.value;
     saveState();
-    render();
+  });
+
+  const del = el("button", { class: "x", type: "button", "aria-label": "Remove " + s.name, text: "\u2715" });
+  del.addEventListener("click", () => {
+    if (s.courses.length === 0 || confirm("Remove " + (s.name || "this semester") + " and its courses?")) removeSemester(s.id);
+  });
+
+  const head = el("div", { class: "sem-head" }, [name, gpa, del]);
+  const wrap = el("div", { class: "semester" }, [head]);
+
+  if (s.courses.length === 0) wrap.appendChild(el("p", { class: "empty", text: "No courses yet in this semester." }));
+  for (const c of s.courses) wrap.appendChild(renderCourse(s, c));
+
+  const add = el("button", { class: "btn", type: "button", text: "Add course" });
+  add.addEventListener("click", () => addCourse(s.id));
+  wrap.appendChild(el("div", { class: "sem-foot" }, [add]));
+  return wrap;
+}
+
+function renderCourse(s, c) {
+  const name = el("input", { type: "text", value: c.name, placeholder: "e.g. Cataloguing 201", maxlength: "60" });
+  name.addEventListener("input", (e) => {
+    c.name = e.target.value;
+    saveState();
+  });
+
+  const unit = el("input", { type: "number", inputmode: "numeric", min: "0", max: String(MAX_UNIT), step: "1", value: String(c.unit) });
+  unit.addEventListener("input", (e) => {
+    c.unit = clampUnit(e.target.value);
+    saveState();
+    updateNumbers(s);
+  });
+  unit.addEventListener("blur", (e) => {
+    e.target.value = String(clampUnit(c.unit));
+  });
+
+  const grade = el("select");
+  for (const g of Object.keys(GRADE_POINTS)) {
+    const opt = el("option", { value: g, text: g });
+    if (g === c.grade) opt.selected = true;
+    grade.appendChild(opt);
   }
-});
+  const pts = el("div", { class: "pts", id: "pts-" + c.id, text: pointsFor(c.grade).toFixed(1) });
+  grade.addEventListener("change", (e) => {
+    c.grade = e.target.value;
+    pts.textContent = pointsFor(c.grade).toFixed(1);
+    saveState();
+    updateNumbers(s);
+  });
 
-render();
+  const del = el("button", { class: "x", type: "button", "aria-label": "Remove course", text: "\u2715" });
+  del.addEventListener("click", () => removeCourse(s.id, c.id));
 
+  const fName = el("label", { class: "f-name", text: "Course" }, [name]);
+  const fUnit = el("label", { class: "f-unit", text: "Units" }, [unit]);
+  const fGrade = el("label", { class: "f-grade", text: "Grade" }, [grade]);
+  return el("div", { class: "course" }, [fName, fUnit, fGrade, pts, del]);
+}
+
+function updateNumbers(semester) {
+  const g = $("gpa-" + semester.id);
+  if (g) g.textContent = "GPA " + semesterGPA(semester).toFixed(2);
+  renderSummary();
+}
+
+function renderSummary() {
+  const o = overall();
+  $("cgpa-value").textContent = o.cgpa.toFixed(2);
+  $("cgpa-class").textContent = classOfDegree(o.cgpa, o.units);
+  $("stat-units").textContent = String(o.units);
+  $("stat-semesters").textContent = String(state.semesters.length);
+  $("stat-courses").textContent = String(state.semesters.reduce((n, s) => n + s.courses.length, 0));
+  renderPlan();
+}
+
+/* Past results */
+
+function validatePrior() {
+  const err = $("prior-error");
+  const c = state.prior.cgpa;
+  const u = state.prior.units;
+  let msg = "";
+  if (c !== "" && (!Number.isFinite(Number(c)) || Number(c) < 0 || Number(c) > 5)) msg = "Past CGPA must be between 0 and 5.";
+  else if (u !== "" && (!Number.isFinite(Number(u)) || Number(u) < 0 || Number(u) > MAX_PRIOR_UNITS)) msg = "Past units must be between 0 and " + MAX_PRIOR_UNITS + ".";
+  else if ((c === "") !== (u === "")) msg = "Enter both the past CGPA and the past units.";
+  err.textContent = msg;
+  err.hidden = msg === "";
+}
+
+/* Target planner: required GPA over the next N units to reach a target CGPA */
+
+function currentTarget() {
+  const sel = $("target-select").value;
+  return sel === "custom" ? Number($("custom-target").value) : Number(sel);
+}
+
+function renderPlan() {
+  const out = $("plan-result");
+  const o = overall();
+  const target = currentTarget();
+  const next = Math.round(Number($("next-units").value));
+  out.classList.remove("bad");
+
+  if (!Number.isFinite(target) || target <= 0 || target > 5) {
+    out.textContent = "Enter a target between 0 and 5.";
+    return;
+  }
+  if (!Number.isFinite(next) || next < 1) {
+    out.textContent = "Enter how many units you have left.";
+    return;
+  }
+  if (o.units === 0) {
+    out.textContent = "Add courses or past results first.";
+    return;
+  }
+  const needed = (target * (o.units + next) - o.points) / next;
+  if (needed > 5) {
+    out.classList.add("bad");
+    out.textContent = "Out of reach with " + next + " more units. You would need " + needed.toFixed(2) + ", above the 5.0 cap. Try more units or a lower target.";
+  } else if (needed <= 0) {
+    out.textContent = "You already clear " + target.toFixed(2) + " even with straight zeros. Keep going.";
+  } else {
+    const strong = needed.toFixed(2);
+    out.innerHTML = "You need a GPA of <strong>" + strong + "</strong> over your next " + next + " units to reach " + target.toFixed(2) + ".";
+  }
+}
+
+/* Copy and print */
+
+function summaryText() {
+  const o = overall();
+  const lines = ["CGPA: " + o.cgpa.toFixed(2) + " (" + classOfDegree(o.cgpa, o.units) + ")", "Total units: " + o.units];
+  const p = priorValues();
+  if (p.units > 0) lines.push("Includes past results: " + Number(state.prior.cgpa).toFixed(2) + " over " + p.units + " units");
+  for (const s of state.semesters) lines.push(s.name + ": GPA " + semesterGPA(s).toFixed(2) + " (" + tally(s.courses).units + " units)");
+  return lines.join("\n");
+}
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.hidden = true), 2200);
+}
+
+async function copySummary() {
+  const text = summaryText();
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Summary copied");
+  } catch (err) {
+    const ta = el("textarea", { "aria-hidden": "true" });
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      toast("Summary copied");
+    } catch (e2) {
+      toast("Copy failed. Select the text and copy manually.");
+    }
+    ta.remove();
+  }
+}
+
+/* Wire up */
+
+function init() {
+  $("prior-cgpa").value = state.prior.cgpa;
+  $("prior-units").value = state.prior.units;
+
+  $("prior-cgpa").addEventListener("input", (e) => {
+    state.prior.cgpa = e.target.value;
+    validatePrior();
+    saveState();
+    renderSummary();
+  });
+  $("prior-units").addEventListener("input", (e) => {
+    state.prior.units = e.target.value;
+    validatePrior();
+    saveState();
+    renderSummary();
+  });
+
+  $("target-select").addEventListener("change", () => {
+    $("custom-wrap").hidden = $("target-select").value !== "custom";
+    renderPlan();
+  });
+  $("custom-target").addEventListener("input", renderPlan);
+  $("next-units").addEventListener("input", renderPlan);
+
+  $("add-semester-btn").addEventListener("click", addSemester);
+  $("copy-btn").addEventListener("click", copySummary);
+  $("print-btn").addEventListener("click", () => window.print());
+  $("reset-btn").addEventListener("click", () => {
+    if (confirm("This clears every semester, course and past result. Continue?")) {
+      state = emptyState();
+      $("prior-cgpa").value = "";
+      $("prior-units").value = "";
+      validatePrior();
+      saveState();
+      renderSemesters();
+      renderSummary();
+    }
+  });
+
+  validatePrior();
+  renderSemesters();
+  renderSummary();
+}
+
+init();

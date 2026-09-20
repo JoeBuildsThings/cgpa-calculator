@@ -1,419 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>CGPA Calculator</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="description" content="CGPA calculator built for ALL STUDENTS 5.0 grading scale. Add semesters, add courses, track your running CGPA." />
-<style>
-:root {
-  --bg: #050816;
-  --card-bg: rgba(15, 23, 42, 0.9);
-  --accent: #3b82f6;
-  --accent-soft: rgba(59, 130, 246, 0.15);
-  --text: #e5e7eb;
-  --muted: #9ca3af;
-  --danger: #f97373;
-  --success: #4ade80;
-  --radius-lg: 18px;
-  --radius-sm: 10px;
-  --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.7);
-  --transition-fast: 0.2s ease-out;
-  --transition-slow: 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top, #1e293b 0, #020617 40%, #000 100%);
-  color: var(--text);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 24px;
-  overflow-x: hidden;
-}
-.orb {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.35;
-  z-index: -1;
-  animation: floatOrb 18s infinite alternate;
-}
-.orb:nth-child(1) { width: 420px; height: 420px; background: #3b82f6; top: -120px; left: -60px; }
-.orb:nth-child(2) { width: 360px; height: 360px; background: #22c55e; bottom: -80px; right: -40px; animation-delay: 4s; }
-.orb:nth-child(3) { width: 260px; height: 260px; background: #f97316; top: 45%; left: 70%; animation-delay: 8s; }
-@keyframes floatOrb {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  100% { transform: translate3d(40px, -40px, 0) scale(1.05); }
-}
-.app-shell {
-  width: 100%;
-  max-width: 1000px;
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 24px;
-  position: relative;
-  animation: fadeInUp var(--transition-slow);
-}
-@media (max-width: 840px) {
-  .app-shell { grid-template-columns: minmax(0, 1fr); }
-}
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translate3d(0, 20px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-.card {
-  background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  backdrop-filter: blur(24px);
-  padding: 22px 22px 18px;
-  position: relative;
-  overflow: hidden;
-  margin-bottom: 24px;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.title-group h1 { margin: 0; font-size: 1.35rem; letter-spacing: 0.03em; }
-.title-group p { margin: 4px 0 0; font-size: 0.82rem; color: var(--muted); }
-.pill {
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.6);
-  font-size: 0.78rem;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 64, 175, 0.65));
-}
-.pill-dot {
-  width: 7px; height: 7px; border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
-}
-.semester-block {
-  border: 1px solid rgba(75, 85, 99, 0.8);
-  border-radius: var(--radius-sm);
-  margin-bottom: 18px;
-  overflow: hidden;
-}
-.semester-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: rgba(30, 41, 59, 0.6);
-  gap: 8px;
-}
-.semester-title-row input {
-  background: transparent;
-  border: none;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  padding: 4px 6px;
-  max-width: 220px;
-}
-.semester-title-row input:focus { outline: none; background: rgba(59, 130, 246, 0.1); border-radius: 6px; }
-.subject-list {
-  border-radius: 0;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.6));
-  max-height: 420px;
-  overflow-y: auto;
-}
-.subject-row {
-  display: grid;
-  grid-template-columns: 1.3fr 0.6fr 0.8fr 0.6fr auto;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 14px;
-  border-bottom: 1px solid rgba(55, 65, 81, 0.7);
-  transition: background var(--transition-fast), transform var(--transition-fast);
-}
-.subject-row:last-child { border-bottom: none; }
-.subject-row:hover {
-  background: radial-gradient(circle at left, var(--accent-soft) 0, transparent 70%);
-  transform: translateX(2px);
-}
-.subject-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 2px; }
-input, select {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  padding: 8px 9px;
-  font-size: 0.86rem;
-  background: rgba(15, 23, 42, 0.9);
-  color: var(--text);
-  outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
-    background var(--transition-fast), transform var(--transition-fast);
-}
-input:focus, select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.8);
-  background: rgba(15, 23, 42, 0.95);
-  transform: translateY(-1px);
-}
-.grade-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--muted);
-  justify-content: center;
-}
-.grade-pill span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.9);
-  font-size: 0.74rem;
-}
-.icon-btn {
-  border: none;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 999px;
-  transition: color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-}
-.icon-btn:hover { color: var(--danger); background: rgba(248, 113, 113, 0.1); transform: translateY(-1px); }
-.add-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-top: 1px dashed rgba(75, 85, 99, 0.9);
-  background: rgba(15, 23, 42, 0.85);
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.add-row span { font-size: 0.85rem; color: var(--muted); }
-.btn {
-  border-radius: 999px;
-  border: none;
-  padding: 8px 16px;
-  font-size: 0.86rem;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #2563eb, #4f46e5);
-  color: #e5e7eb;
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.5);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
-}
-.btn:hover { transform: translateY(-1px); box-shadow: 0 14px 40px rgba(37, 99, 235, 0.7); filter: brightness(1.03); }
-.btn-secondary {
-  background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.75);
-  box-shadow: none;
-  color: var(--muted);
-}
-.btn-secondary:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 10px 28px rgba(37, 99, 235, 0.35); }
-.btn-danger-ghost { color: var(--danger); border-color: rgba(248, 113, 113, 0.5); }
-.btn-danger-ghost:hover { border-color: var(--danger); box-shadow: 0 10px 28px rgba(248, 115, 115, 0.35); }
-.actions-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 4px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.metrics-card { display: flex; flex-direction: column; gap: 18px; }
-.metric-pill {
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(148, 163, 184, 0.75);
-  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.25) 0, rgba(15, 23, 42, 0.95) 40%, rgba(15, 23, 42, 0.9) 100%);
-  padding: 18px 18px 16px;
-  position: relative;
-  overflow: hidden;
-}
-.metric-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-.metric-header h2 { margin: 0; font-size: 0.9rem; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); }
-.metric-header span { font-size: 0.8rem; color: var(--muted); }
-.metric-value { font-size: 2.4rem; font-weight: 700; letter-spacing: 0.06em; margin: 4px 0 2px; }
-.metric-tag { font-size: 0.82rem; color: var(--muted); }
-.metric-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.chip {
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  padding: 6px 10px;
-  font-size: 0.78rem;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(15, 23, 42, 0.85);
-}
-.chip-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--accent); }
-.chip-dot.success { background: var(--success); }
-.chip-dot.danger { background: var(--danger); }
-.sparkline {
-  margin-top: 16px;
-  height: 90px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(55, 65, 81, 0.85);
-  background: radial-gradient(circle at top, rgba(37, 99, 235, 0.12) 0, rgba(15, 23, 42, 0.95) 40%, rgba(15, 23, 42, 0.9) 100%);
-  position: relative;
-  overflow: hidden;
-}
-.sparkline svg { width: 100%; height: 100%; display: block; }
-.sparkline-labels {
-  position: absolute;
-  inset: 8px 12px auto;
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.68rem;
-  color: var(--muted);
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-.badge-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--success); box-shadow: 0 0 10px rgba(74, 222, 128, 0.9); }
-.footer-hint { margin-top: 10px; font-size: 0.78rem; color: var(--muted); }
-.scale-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.78rem;
-  margin-top: 4px;
-}
-.scale-table th, .scale-table td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid rgba(55, 65, 81, 0.7);
-  color: var(--muted);
-}
-.scale-table th { color: var(--text); font-weight: 600; }
-.empty-state { padding: 24px 14px; text-align: center; color: var(--muted); font-size: 0.85rem; }
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 999px; }
-@media (prefers-reduced-motion: reduce) {
-  .orb, .app-shell { animation: none; }
-}
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CGPA Calculator | 5.0 Scale for Nigerian Universities</title>
+<meta name="description" content="Free CGPA calculator on the 5.0 scale used by Nigerian universities. Add semesters and courses, include past results, and see what GPA you need to hit your target class.">
+<meta name="theme-color" content="#14110f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="orb"></div>
-<div class="orb"></div>
-<div class="orb"></div>
+<a class="skip" href="#semesters">Skip to semesters</a>
 
-<main class="app-shell">
-  <section>
-    <div class="card">
-      <header class="card-header">
-        <div class="title-group">
-          <h1>CGPA Calculator</h1>
-          <p>UNIOSUN 5.0 scale &middot; add courses per semester, track your running CGPA</p>
-        </div>
-        <div class="pill">
-          <span class="pill-dot"></span>
-          <span>Saved locally on this device</span>
-        </div>
-      </header>
-
-      <div id="semesters-container"></div>
-
-      <div class="actions-bar">
-        <button class="btn btn-secondary" id="add-semester-btn">
-          <span>+</span><span>Add semester</span>
-        </button>
-        <button class="btn btn-secondary btn-danger-ghost" id="reset-btn">
-          <span>&#8635;</span><span>Reset all data</span>
-        </button>
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">5.0</span>
+      <div>
+        <h1>CGPA Calculator</h1>
+        <p>Nigerian 5.0 scale. Saved on this device only.</p>
       </div>
     </div>
-  </section>
-
-  <section class="metrics-card">
-    <div class="metric-pill">
-      <div class="metric-header">
-        <h2>Overall CGPA</h2>
-        <span id="total-units-label">0 units</span>
-      </div>
-      <div class="metric-value" id="cgpa-value">0.00</div>
-      <div class="metric-tag" id="cgpa-class">Add courses to see your standing</div>
-      <div class="metric-chip-row">
-        <div class="chip"><span class="chip-dot success"></span><span id="chip-semesters">0 semesters</span></div>
-        <div class="chip"><span class="chip-dot"></span><span id="chip-courses">0 courses</span></div>
-        <div class="chip"><span class="chip-dot danger"></span><span>5.0 scale</span></div>
-      </div>
+    <div class="top-actions">
+      <button class="btn btn-quiet" id="copy-btn" type="button">Copy summary</button>
+      <button class="btn btn-quiet" id="print-btn" type="button">Print</button>
     </div>
+  </div>
+</header>
 
-    <div class="metric-pill">
-      <div class="metric-header">
-        <h2>Progress by semester</h2>
-        <span>GPA per term</span>
-      </div>
-      <div class="sparkline">
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" id="sparkline-svg">
-          <polyline fill="none" stroke="url(#grad)" stroke-width="1.8" points="" id="sparkline-poly" />
-          <defs>
-            <linearGradient id="grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#3b82f6" />
-              <stop offset="50%" stop-color="#22c55e" />
-              <stop offset="100%" stop-color="#a855f7" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div class="sparkline-labels" id="sparkline-labels"></div>
-      </div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-        <div class="badge"><span class="badge-dot"></span><span>Auto saved</span></div>
-      </div>
-    </div>
+<main class="wrap layout">
+  <aside class="summary" aria-label="Your results">
+    <section class="result">
+      <p class="label">Overall CGPA</p>
+      <p class="big" id="cgpa-value" aria-live="polite">0.00</p>
+      <p class="standing" id="cgpa-class">Add courses to see your class of degree</p>
+      <dl class="stats">
+        <div><dt>Units</dt><dd id="stat-units">0</dd></div>
+        <div><dt>Semesters</dt><dd id="stat-semesters">0</dd></div>
+        <div><dt>Courses</dt><dd id="stat-courses">0</dd></div>
+      </dl>
+    </section>
 
-    <div class="metric-pill">
-      <div class="metric-header">
-        <h2>Grade scale</h2>
-        <span>FOR ALL SCHOOLS / NUC</span>
+    <section class="panel">
+      <h2>Past results</h2>
+      <p class="hint">Already have a CGPA from earlier years? Enter it here instead of retyping every course.</p>
+      <div class="field-row">
+        <label>Past CGPA
+          <input type="number" id="prior-cgpa" inputmode="decimal" min="0" max="5" step="0.01" placeholder="e.g. 3.85">
+        </label>
+        <label>Past units
+          <input type="number" id="prior-units" inputmode="numeric" min="0" max="400" step="1" placeholder="e.g. 90">
+        </label>
       </div>
-      <table class="scale-table">
-        <tr><th>Score</th><th>Grade</th><th>Point</th></tr>
-        <tr><td>70-100</td><td>A</td><td>5.0</td></tr>
-        <tr><td>60-69</td><td>B</td><td>4.0</td></tr>
-        <tr><td>50-59</td><td>C</td><td>3.0</td></tr>
-        <tr><td>45-49</td><td>D</td><td>2.0</td></tr>
-        <tr><td>40-44</td><td>E</td><td>1.0</td></tr>
-        <tr><td>0-39</td><td>F</td><td>0.0</td></tr>
+      <p class="error" id="prior-error" role="alert" hidden></p>
+    </section>
+
+    <section class="panel">
+      <h2>Target planner</h2>
+      <p class="hint">Pick a target and see the GPA you need over your next units.</p>
+      <div class="field-row">
+        <label>Target CGPA
+          <select id="target-select">
+            <option value="4.50">First Class (4.50)</option>
+            <option value="3.50">Second Class Upper (3.50)</option>
+            <option value="2.40">Second Class Lower (2.40)</option>
+            <option value="1.50">Third Class (1.50)</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label>Next units
+          <input type="number" id="next-units" inputmode="numeric" min="1" max="100" step="1" value="24">
+        </label>
+      </div>
+      <label id="custom-wrap" hidden>Custom target
+        <input type="number" id="custom-target" inputmode="decimal" min="0" max="5" step="0.01" placeholder="e.g. 4.20">
+      </label>
+      <p class="plan" id="plan-result" aria-live="polite">Add some courses first.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Grade scale</h2>
+      <table class="scale">
+        <thead><tr><th>Score</th><th>Grade</th><th>Point</th></tr></thead>
+        <tbody>
+          <tr><td>70 to 100</td><td>A</td><td>5.0</td></tr>
+          <tr><td>60 to 69</td><td>B</td><td>4.0</td></tr>
+          <tr><td>50 to 59</td><td>C</td><td>3.0</td></tr>
+          <tr><td>45 to 49</td><td>D</td><td>2.0</td></tr>
+          <tr><td>40 to 44</td><td>E</td><td>1.0</td></tr>
+          <tr><td>0 to 39</td><td>F</td><td>0.0</td></tr>
+        </tbody>
       </table>
-      <div class="footer-hint">CGPA = total quality points / total credit units, across all semesters.</div>
+      <p class="hint">CGPA = total quality points divided by total credit units.</p>
+    </section>
+  </aside>
+
+  <section class="work" id="semesters" aria-label="Semesters">
+    <div class="work-head">
+      <h2>Your semesters</h2>
+      <div class="work-actions">
+        <button class="btn" id="add-semester-btn" type="button">Add semester</button>
+        <button class="btn btn-danger" id="reset-btn" type="button">Reset all</button>
+      </div>
     </div>
+    <div id="semesters-container"></div>
   </section>
 </main>
 
-<script src="script.js"></script>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="script.js" defer></script>
 </body>
 </html>
